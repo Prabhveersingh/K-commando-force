@@ -5,55 +5,57 @@ const cors = require('cors');
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Auto uploads folder
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
-const upload = multer({ dest: 'uploads/' });
+// ✅ Auto uploads folder (Render-safe)
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+const upload = multer({ dest: uploadsDir });
 
 // 🔥 MAIN ENDPOINT: ImgBB → Google Lens
 app.post('/guru-scan', upload.single('image'), async (req, res) => {
   try {
     console.log('🎯 Guru photo scanning...');
     const imagePath = req.file.path;
-    
+
     // STEP 1: ImgBB Upload (HARDCODED KEYS)
     console.log('📤 ImgBB upload...');
     const imgbbUrl = await uploadToImgBB(imagePath);
-    
+
     // STEP 2: Google Lens Scan
     console.log('🔍 Google Lens search...');
     const lensResults = await googleLensSearch(imgbbUrl);
-    
+
     // Cleanup
-    fs.unlinkSync(imagePath);
-    
+    try { fs.unlinkSync(imagePath); } catch (e) {}
+
     res.json({
       success: true,
       imgbb_url: imgbbUrl,
       results: lensResults,
       total_matches: lensResults.length
     });
-    
+
   } catch (error) {
     console.error('❌ Error:', error.message);
-    res.json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// IMGBB Upload (TEARA KEY HARDCODED)
+// IMGBB Upload (TERA KEY HARDCODED)
 async function uploadToImgBB(imagePath) {
   const formData = new FormData();
   formData.append('image', fs.createReadStream(imagePath));
-  
+
   const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
     params: { key: '308e896a76d67e96b583934af45219ec' }, // TERI KEY
     headers: formData.getHeaders()
   });
-  
+
   return response.data.data.url;
 }
 
@@ -67,7 +69,7 @@ async function googleLensSearch(imageUrl) {
         api_key: 'ccba3afd27791484340ca6df5e15cc66a888ba689aed1cee53018ce433932c96' // TERI KEY
       }
     });
-    
+
     const results = [];
     if (response.data.visual_matches) {
       response.data.visual_matches.slice(0, 6).forEach(match => {
@@ -123,19 +125,19 @@ app.get('/', (req, res) => {
       <h1>🚀 SGPC Guru Image Scanner</h1>
       <p>Upload → ImgBB → Google Lens → Facebook/Twitter Matches</p>
     </div>
-    
+
     <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
       <input type="file" id="fileInput" accept="image/*" style="display:none;">
       <h2>📸 Guru Photo Upload करें</h2>
       <p>PNG/JPG - Google Lens exact matches मिलेंगे</p>
       <button class="scan-btn" onclick="scanGuru()">🔍 Scan with Google Lens</button>
     </div>
-    
+
     <div id="loading">
       <h2>🔄 Processing...</h2>
       <p>📤 ImgBB → 🔍 Google Lens → 📊 Matches loading...</p>
     </div>
-    
+
     <div id="results" class="results-grid"></div>
   </div>
 
@@ -144,23 +146,23 @@ app.get('/', (req, res) => {
     fileInput.addEventListener('change', function(e) {
       if(e.target.files[0]) document.querySelector('.upload-zone h2').textContent = '✅ ' + e.target.files[0].name;
     });
-    
+
     async function scanGuru() {
       const file = fileInput.files[0];
       if(!file) { alert('Photo select करें!'); return; }
-      
+
       document.querySelector('.upload-zone').style.display = 'none';
       document.getElementById('loading').style.display = 'block';
-      
+
       const formData = new FormData();
       formData.append('image', file);
-      
+
       try {
         const response = await fetch('/guru-scan', { method: 'POST', body: formData });
         const result = await response.json();
-        
+
         document.getElementById('loading').style.display = 'none';
-        
+
         if(result.success) {
           showResults(result.results);
           console.log('✅ Success:', result);
@@ -172,9 +174,9 @@ app.get('/', (req, res) => {
         alert('Network error!');
       }
     }
-    
+
     function showResults(results) {
-      document.getElementById('results').innerHTML = results.map(r => 
+      document.getElementById('results').innerHTML = results.map(r =>
         '<div class="result-card">' +
           '<img src="' + r.image + '" style="width:100%;height:200px;object-fit:cover;border-radius:15px;">' +
           '<h3>' + r.title + '</h3>' +
@@ -189,9 +191,11 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.listen(3000, () => {
-  console.log('\\n🚀 SGPC Guru Scanner READY!');
-  console.log('🌐 http://localhost:3000');
-  console.log('✅ Your API Keys LOADED!');
+// ✅ Render-ready PORT (IMPORTANT)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log('\n🚀 SGPC Guru Scanner READY!');
+  console.log(`🌐 Running on port: ${PORT}`);
   console.log('📱 Test: Guru photo upload → Results!');
 });
